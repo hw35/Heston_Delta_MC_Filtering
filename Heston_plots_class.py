@@ -9,7 +9,7 @@ from Heston_MC_class import HestonMonteCarlo
 @dataclass
 class HestonPlots:
 
-    def plot_paths(self,simulator: HestonMonteCarlo, N_paths, seed: int = 7):
+    def plot_paths(self,simulator: HestonMonteCarlo, N_paths, seed: int = 42):
         """
         Plot sample paths of stock price and variance.
         """
@@ -42,7 +42,7 @@ class HestonPlots:
 
 
     def convergence_study(self,simulator: HestonMonteCarlo, path_counts: List[int], 
-                        analytical_delta: float = 0.630402, seed: int = 7):
+                        analytical_delta: float = 0.630402, seed: int = 42):
         """
         Study convergence of Monte Carlo delta estimate.
         """
@@ -153,7 +153,7 @@ class HestonPlots:
 
         return t_grid, S, v, deltas, portfolio_value
 
-    def plot_hedging_trajectory(self,simulator: HestonMonteCarlo, seed=7):
+    def plot_hedging_trajectory(self,simulator: HestonMonteCarlo, seed=42):
     # Run simulation
 
         seeds = [x for x in range(1,20)]

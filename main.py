@@ -60,20 +60,20 @@ if __name__ == "__main__":
     print("-"*80)
     
     plotter = HestonPlots()
-    plotter.plot_paths(simulator,N_paths=20, seed=7)
+    plotter.plot_paths(simulator,N_paths=20, seed=42)
 
     # Price options
     print("\n" + "-"*80)
     print("Monte Carlo Pricing")
     print("-"*80)
     
-    N_paths = 10000
+    N_paths = 50000
     print(f"\nUsing {N_paths:,} paths...")
     
-    _,call_price, call_std = simulator.price_option(N_paths, 'call', seed=7)
+    _,call_price, call_std = simulator.price_option(N_paths, 'call', seed=42)
     print(f"\nCall Price: ${call_price:.4f} ± ${1.96*call_std:.4f} (95% CI)")
     
-    _, put_price, put_std = simulator.price_option(N_paths, 'put', seed=7)
+    _, put_price, put_std = simulator.price_option(N_paths, 'put', seed=42)
     print(f"Put Price:  ${put_price:.4f} ± ${1.96*put_std:.4f} (95% CI)")
     
     # Check put-call parity
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     
     print(f"\nEstimating delta with {N_paths:,} paths...")
     start = time.time()
-    delta, delta_std = simulator.estimate_delta_finite_diff(N_paths, 'call', dS=0.01, seed=7)
+    delta, delta_std = simulator.estimate_delta_finite_diff(N_paths, 'call', dS=0.01, seed=42)
     elapsed = time.time() - start
     
     print(f"\nResults:")
@@ -106,8 +106,8 @@ if __name__ == "__main__":
     print("Convergence Study")
     print("-"*80)
     
-    path_counts = [100, 500, 1000, 2500, 5000, 10000]
-    plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=7)
+    path_counts = [1000, 5000, 10000, 20000, 35000, 50000]
+    plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=42)
     
     plotter.plot_hedging_trajectory(simulator,seed=123)
 

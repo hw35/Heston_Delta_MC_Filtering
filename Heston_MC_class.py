@@ -58,9 +58,9 @@ class HestonMonteCarlo:
             v_curr = max(v[i-1],0)
             Z_S = Z[i-1,0]
             Z_v = Z[i-1,1]
-            S[i] = S[i-1] * np.exp((self.params.r-0.5*v_curr)*self.dt + np.sqrt(v_curr*self.dt)*Z_S)
+            S[i] = S[i-1] * np.exp((self.params.r-0.5*v_curr-self.params.q)*self.dt + np.sqrt(v_curr*self.dt)*Z_S)
             v_euler = v_curr+ self.params.kappa * (self.params.theta - v_curr)*self.dt + self.params.sigma*np.sqrt(v_curr * self.dt)*Z_v
-            v[i] = np.maximum(v_euler + self.params.sigma**2 / 4 * (Z_v-1)*self.dt, 0)         
+            v[i] = v_euler + self.params.sigma**2 / 4 * (Z_v**2-1)*self.dt
         
         return t_grid, S, v
     
