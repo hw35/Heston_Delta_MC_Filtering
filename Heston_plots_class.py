@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple, List
+from typing import List
 import time
 from dataclasses import dataclass
 
