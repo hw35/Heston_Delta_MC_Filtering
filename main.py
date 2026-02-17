@@ -12,6 +12,7 @@ def get_params_user_input():
     fields = {
         "S0": "Initial stock price",
         "K": "Strike price",
+        "K_U": "Strike price for hedging option",
         "r": "Risk-free rate",
         "q": "Dividend yield",
         "v0": "Initial variance",
@@ -38,7 +39,7 @@ def get_params_user_input():
 if __name__ == "__main__":      
     # Set up parameters
     params = HestonParams(
-        S0=100.0, K=100.0, r=0.03, q=0.0, v0=0.05, lambd = 0, kappa=5.0, 
+        S0=100.0, K=100.0, K_U = 110.0, r=0.03, q=0.0, v0=0.05, lambd = 0, kappa=5.0, 
         theta=0.05, sigma=0.5, rho=-0.8, tau=0.5, analytical_delta = 0
     )
     #params = get_params_user_input()

@@ -4,6 +4,7 @@ class HestonParams:
     """Heston model parameters"""
     S0: float      # Initial stock price
     K: float       # Strike price
+    K_U: float     # Strike for hedging option U
     r: float       # Risk-free rate
     q: float       # Dividend yield
     v0: float      # Initial variance

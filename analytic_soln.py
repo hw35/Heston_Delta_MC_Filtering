@@ -4,6 +4,9 @@ from scipy.integrate import quad
 def analytic_heston_delta(S,K,r,v0,lambd,kappa,theta,sigma,rho,tau,q):
     P1 = analytic_heston_prob(S,K,r,v0,lambd,kappa,theta,sigma,rho,tau,True,q)
     delta = np.exp(-q*tau)*P1
+    print("\n" + "-"*80)
+    print("Analytic Delta is ", delta)
+    print("-"*80)
     return delta
 
 def analytic_heston_prob(S,K,r,v0,lambd,kappa,theta,sigma,rho,tau,isP1,q):

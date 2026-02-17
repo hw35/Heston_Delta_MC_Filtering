@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Tuple
+from scipy.stats import norm
 
 from Heston_params_class import HestonParams
 
@@ -97,7 +98,7 @@ class HestonMonteCarlo:
         
         # Price at S0 + dS
         self.params = HestonParams(
-            S0=S0_original + dS, K=self.params.K, r=self.params.r, q=self.params.q,
+            S0=S0_original + dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
             v0=self.params.v0, kappa=self.params.kappa, theta=self.params.theta,
             sigma=self.params.sigma, rho=self.params.rho, tau=self.params.tau, 
             analytical_delta = self.params.analytical_delta
@@ -106,7 +107,7 @@ class HestonMonteCarlo:
         
         # Price at S0 - dS
         self.params = HestonParams(
-            S0=S0_original - dS, K=self.params.K, r=self.params.r, q=self.params.q,
+            S0=S0_original - dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
             v0=self.params.v0, kappa=self.params.kappa, theta=self.params.theta,
             sigma=self.params.sigma, rho=self.params.rho, tau=self.params.tau,
             analytical_delta = self.params.analytical_delta
@@ -115,7 +116,7 @@ class HestonMonteCarlo:
         
         # Restore original S0
         self.params = HestonParams(
-            S0=S0_original, K=self.params.K, r=self.params.r, q=self.params.q,
+            S0=S0_original, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
             v0=self.params.v0, kappa=self.params.kappa, theta=self.params.theta,
             sigma=self.params.sigma, rho=self.params.rho, tau=self.params.tau,
             analytical_delta = self.params.analytical_delta
@@ -129,35 +130,64 @@ class HestonMonteCarlo:
         
         return delta, delta_std
 
-    def get_bs_delta(self, S, t_remaining, vol_proxy=None)-> float:
-        """
-        Calculate Black-Scholes delta. 
-        vol_proxy: defaults to sqrt(v0) (initial volatility) if None
-        """
-        from scipy.stats import norm
-        
-        if t_remaining <= 1e-6:
-            return 1.0 if S > self.params.K else 0.0
-            
-        sigma = np.sqrt(self.params.v0) if vol_proxy is None else vol_proxy
-        d1 = (np.log(S / self.params.K) + 
-            (self.params.r - self.params.q + 0.5 * sigma**2) * t_remaining) / (sigma * np.sqrt(t_remaining))
-        
-        return np.exp(-self.params.q * t_remaining) * norm.cdf(d1)
-    
-    def get_bs_price(self, S, t_remaining, vol_proxy) -> float:
+    def get_bs_price(self, S, t_remaining, vol_proxy=None, strike=None) -> float:
         """Calculate Black-Scholes call option price."""
-        from scipy.stats import norm
-        
+        K = self.params.K if strike is None else strike
+
         if t_remaining <= 1e-6:
-            return max(S - self.params.K, 0)
-        
+            return max(S - K, 0)
+
         sigma = np.sqrt(self.params.v0) if vol_proxy is None else vol_proxy
-        
-        d1 = (np.log(S / self.params.K) + 
+
+        d1 = (np.log(S / K) +
             (self.params.r - self.params.q + 0.5 * sigma**2) * t_remaining) / \
             (sigma * np.sqrt(t_remaining))
         d2 = d1 - sigma * np.sqrt(t_remaining)
-        
-        return (S * np.exp(-self.params.q * t_remaining) * norm.cdf(d1) - 
-                self.params.K * np.exp(-self.params.r * t_remaining) * norm.cdf(d2))
+
+        return (S * np.exp(-self.params.q * t_remaining) * norm.cdf(d1) -
+                K * np.exp(-self.params.r * t_remaining) * norm.cdf(d2))
+
+
+    def get_bs_delta(self, S, t_remaining, vol_proxy=None, strike=None) -> float:
+        """Calculate Black-Scholes delta."""
+        K = self.params.K if strike is None else strike
+
+        if t_remaining <= 1e-6:
+            return 1.0 if S > K else 0.0
+
+        sigma = np.sqrt(self.params.v0) if vol_proxy is None else vol_proxy
+        d1 = (np.log(S / K) +
+            (self.params.r - self.params.q + 0.5 * sigma**2) * t_remaining) / \
+            (sigma * np.sqrt(t_remaining))
+
+        return np.exp(-self.params.q * t_remaining) * norm.cdf(d1)
+
+
+    def get_bs_vega(self, S, t_remaining, vol_proxy=None, strike=None) -> float:
+        """Calculate Black-Scholes vega."""
+        K = self.params.K if strike is None else strike
+
+        if t_remaining <= 1e-6:
+            return 0.0
+
+        sigma = np.sqrt(self.params.v0) if vol_proxy is None else vol_proxy
+        d1 = (np.log(S / K) +
+            (self.params.r - self.params.q + 0.5 * sigma**2) * t_remaining) / \
+            (sigma * np.sqrt(t_remaining))
+
+        return S * np.exp(-self.params.q * t_remaining) * np.sqrt(t_remaining) * norm.pdf(d1)
+
+
+    def get_bs_price_U(self, S, t_remaining, vol_proxy=None) -> float:
+        """Black-Scholes price for hedging option U with strike K_U."""
+        return self.get_bs_price(S, t_remaining, vol_proxy, strike=self.params.K_U)
+
+
+    def get_bs_delta_U(self, S, t_remaining, vol_proxy=None) -> float:
+        """Black-Scholes delta for hedging option U with strike K_U."""
+        return self.get_bs_delta(S, t_remaining, vol_proxy, strike=self.params.K_U)
+
+
+    def get_bs_vega_U(self, S, t_remaining, vol_proxy=None) -> float:
+        """Black-Scholes vega for hedging option U with strike K_U."""
+        return self.get_bs_vega(S, t_remaining, vol_proxy, strike=self.params.K_U)
