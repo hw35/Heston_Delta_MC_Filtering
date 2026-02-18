@@ -68,7 +68,7 @@ if __name__ == "__main__":
     print("Monte Carlo Pricing")
     print("-"*80)
     
-    N_paths = 50000
+    N_paths = 5000
     print(f"\nUsing {N_paths:,} paths...")
     
     _,call_price, call_std = simulator.price_option(N_paths, 'call', seed=42)
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     
     print(f"\nEstimating delta with {N_paths:,} paths...")
     start = time.time()
-    delta, delta_std = simulator.estimate_delta_finite_diff(N_paths, 'call', dS=0.01, seed=42)
+    delta, delta_std = simulator.estimate_delta_finite_diff(N_paths=N_paths, tau_i=simulator.params.tau, v_i=simulator.params.v0, option_type='call', dS=0.01, seed=42)
     elapsed = time.time() - start
     
     print(f"\nResults:")
@@ -107,8 +107,8 @@ if __name__ == "__main__":
     print("Convergence Study")
     print("-"*80)
     
-    path_counts = [1000, 5000, 10000, 20000, 35000, 50000]
+    path_counts = [100, 500, 1000, 2000, 3500, 5000]
     plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=42)
     
-    plotter.plot_hedging_trajectory(simulator,seed=123)
+    plotter.plot_hedging_trajectory(simulator,10,seed=123)
 

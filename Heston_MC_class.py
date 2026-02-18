@@ -90,7 +90,7 @@ class HestonMonteCarlo:
         
         return payoffs, price, std_error
     
-    def estimate_delta_finite_diff(self, N_paths: int, option_type: str = 'call',
+    def estimate_delta_finite_diff(self, N_paths: int, tau_i: float, v_i: float, option_type: str = 'call',
                                   dS: float = 0.01, seed: int = None) -> Tuple[float, float]:
 
         # Save original S0
@@ -99,8 +99,8 @@ class HestonMonteCarlo:
         # Price at S0 + dS
         self.params = HestonParams(
             S0=S0_original + dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
-            v0=self.params.v0, kappa=self.params.kappa, theta=self.params.theta,
-            sigma=self.params.sigma, rho=self.params.rho, tau=self.params.tau, 
+            v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+            sigma=self.params.sigma, rho=self.params.rho, tau=tau_i, 
             analytical_delta = self.params.analytical_delta
         )
         _, price_up, std_up = self.price_option(N_paths, option_type, seed)
@@ -108,8 +108,8 @@ class HestonMonteCarlo:
         # Price at S0 - dS
         self.params = HestonParams(
             S0=S0_original - dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
-            v0=self.params.v0, kappa=self.params.kappa, theta=self.params.theta,
-            sigma=self.params.sigma, rho=self.params.rho, tau=self.params.tau,
+            v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+            sigma=self.params.sigma, rho=self.params.rho, tau=tau_i,
             analytical_delta = self.params.analytical_delta
         )
         _, price_down, std_down = self.price_option(N_paths, option_type, seed)
@@ -117,8 +117,8 @@ class HestonMonteCarlo:
         # Restore original S0
         self.params = HestonParams(
             S0=S0_original, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
-            v0=self.params.v0, kappa=self.params.kappa, theta=self.params.theta,
-            sigma=self.params.sigma, rho=self.params.rho, tau=self.params.tau,
+            v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+            sigma=self.params.sigma, rho=self.params.rho, tau=tau_i,
             analytical_delta = self.params.analytical_delta
         )
         
@@ -130,7 +130,7 @@ class HestonMonteCarlo:
         
         return delta, delta_std
 
-    def get_bs_price(self, S, t_remaining, vol_proxy=None, strike=None) -> float:
+    def get_bs_price(self, S, t_remaining, vol_proxy, strike = None) -> float:
         """Calculate Black-Scholes call option price."""
         K = self.params.K if strike is None else strike
 

@@ -54,7 +54,7 @@ class HestonPlots:
         
         for N in path_counts:
             start = time.time()
-            delta, _ = simulator.estimate_delta_finite_diff(N, 'call', dS=0.01, seed=seed)
+            delta, _ = simulator.estimate_delta_finite_diff(N, tau_i = simulator.params.tau, v_i = simulator.params.v0, option_type = 'call', dS=0.01, seed=seed)
             elapsed = time.time() - start
             
             deltas.append(delta)
@@ -248,20 +248,138 @@ class HestonPlots:
                                 + cash[i])
 
         return t_grid, S, v, deltas, phis, portfolio_value
+    
+    def CV_delta_vega_hedging(self, simulator, N_paths, seed, rehedge_steps, b=1.0, fd_bump=1e-4):
+        """
+        Simulates a delta-vega-hedged path for a Short Call position.
+        Implements the full Heston hedging portfolio: Pi = V + Delta*S + phi*U
 
-    def plot_hedging_trajectory(self, simulator, seed):
+        Uses a control variate correction on the Heston delta:
+            Delta_CV = Delta_Heston_FD - b * (Delta_BS_FD - Delta_BS_analytical)
+        where FD denotes a finite-difference (MC-noisy) estimate and analytical
+        is the closed-form BS delta. This reduces variance in the delta estimate.
+
+        Args:
+            rehedge_steps (int): Number of time steps between rebalancing.
+            b (float): Control variate coefficient. b=1 is the standard choice.
+            fd_bump (float): Relative bump size h = fd_bump * S for finite differences.
+        """
+        # 1. Simulate the Real World Path (Heston dynamics)
+        t_grid, S, v = simulator.simulate_path(seed=seed)
+
+        # 2. Initialize arrays
+        portfolio_value   = np.zeros(len(t_grid))
+        deltas            = np.zeros(len(t_grid))
+        vegas_V           = np.zeros(len(t_grid))
+        vegas_U           = np.zeros(len(t_grid))
+        phis              = np.zeros(len(t_grid))
+        stock_holdings    = np.zeros(len(t_grid))
+        option_U_holdings = np.zeros(len(t_grid))
+        cash              = np.zeros(len(t_grid))
+
+        # Helper: compute control-variate corrected Heston delta at a given node
+        def compute_cv_delta(S_i, tau_i, v_i):
+            h = fd_bump * S_i  # absolute bump size scales with S
+
+            # --- Finite-difference Heston delta ---
+            # basically has run time error b/c inside loop below we're looping thru N_paths*N_steps number of simulations
+            delta_heston_finite_diff, error = simulator.estimate_delta_finite_diff(N_paths=N_paths, tau_i=tau_i, v_i=v_i, option_type="call",dS=h,seed=seed)
+
+            # --- Finite-difference BS delta (same bump, same spot) ---
+            V_bs_up   = simulator.get_bs_price(S_i + h, tau_i, v_i)
+            V_bs_down = simulator.get_bs_price(S_i - h, tau_i, v_i)
+            delta_bs_finite_diff = (V_bs_up - V_bs_down) / (2 * h)
+
+            # --- Analytical BS delta ---
+            delta_bs_analytical = simulator.get_bs_delta(S_i, tau_i)
+
+            # --- Control variate correction ---
+            return delta_heston_finite_diff - b * (delta_bs_finite_diff - delta_bs_analytical)
+
+        # 3. Initial Setup (t=0)
+        tau = simulator.params.tau
+
+        V0 = simulator.get_bs_price(S[0], tau, v[0], strike = None)
+        vegas_V[0] = simulator.get_bs_vega(S[0], tau)
+
+        U0 = simulator.get_bs_price_U(S[0], tau, v[0])
+        vegas_U[0] = simulator.get_bs_vega_U(S[0], tau)
+
+        if abs(vegas_V[0]) == 0 or abs(-vegas_V[0] / vegas_U[0]) > 100:
+            phis[0] = 0
+        else:
+            phis[0] = -vegas_V[0] / vegas_U[0]
+        
+
+        # Use CV-corrected delta from the start
+        deltas[0] = compute_cv_delta(S[0], tau, v[0])
+        stock_holdings[0] = deltas[0]
+        option_U_holdings[0] = phis[0]
+
+        cash[0] = V0 - (stock_holdings[0] * S[0]) - (option_U_holdings[0] * U0)
+
+        # 4. Step through time
+        for i in range(1, len(t_grid)):
+            dt  = t_grid[i] - t_grid[i-1]
+            #tau = simulator.params.tau - t_grid[i]
+            tau = max(simulator.params.tau - t_grid[i], 1e-6)
+
+            # Accrue interest on cash
+            cash[i] = cash[i-1] * np.exp(simulator.params.r * dt)
+
+            # Current prices and Greeks
+            V_i = simulator.get_bs_price(S[i], tau, v[i], strike = None)
+            U_i = simulator.get_bs_price_U(S[i], tau, v[i])
+
+            current_vega_V = simulator.get_bs_vega(S[i], tau, vol_proxy=None, strike = None)
+            current_vega_U = simulator.get_bs_vega_U(S[i], tau,vol_proxy=None)
+
+            if abs(current_vega_U) == 0 or abs(-current_vega_V / current_vega_U) > 100:
+                current_phi = phis[i-1]
+            else:
+                current_phi = -current_vega_V / current_vega_U
+
+            # CV-corrected Heston delta
+            current_delta = compute_cv_delta(S[i], tau, v[i])
+            current_delta = np.clip(current_delta, -1.0, 1.0)
+
+            deltas[i]  = current_delta
+            vegas_V[i] = current_vega_V
+            vegas_U[i] = current_vega_U
+            phis[i]    = current_phi
+
+            # Rehedge logic
+            if i % rehedge_steps == 0 and i < len(t_grid) - 1:
+                shares_to_trade = current_delta - stock_holdings[i-1]
+                cash[i] -= shares_to_trade * S[i]
+                stock_holdings[i] = current_delta
+
+                options_to_trade = current_phi - option_U_holdings[i-1]
+                cash[i] -= options_to_trade * U_i
+                option_U_holdings[i] = current_phi
+            else:
+                stock_holdings[i]     = stock_holdings[i-1]
+                option_U_holdings[i]  = option_U_holdings[i-1]
+
+            portfolio_value[i] = (stock_holdings[i] * S[i]
+                                + option_U_holdings[i] * U_i
+                                + cash[i])
+
+        return t_grid, S, v, deltas, phis, portfolio_value
+
+    def plot_hedging_trajectory(self, simulator, N_paths, seed):
         seeds = [x for x in range(1, 20)]
         
         fig, axes = plt.subplots(6, 1, figsize=(12, 22))
         ax1, ax2, ax3, ax4, ax5, ax6 = axes
 
         for seed in seeds:
-            t, S, v, deltas, phis, port_val = self.simulate_delta_vega_hedging(
-                simulator, seed=seed, rehedge_steps=1
+            t, S, v, deltas, phis, port_val = self.CV_delta_vega_hedging(
+                simulator, N_paths, seed=seed, rehedge_steps=1
             )
             # Compute portfolio components at each timestep
             V = np.array([
-                simulator.get_bs_price(S[i], simulator.params.tau - t[i], vol_proxy=np.sqrt(v[i]))
+                simulator.get_bs_price(S[i], simulator.params.tau - t[i], vol_proxy=np.sqrt(v[i]), strike = None)
                 for i in range(len(t))
             ])
             delta_S = deltas * S  # Delta * Stock price
