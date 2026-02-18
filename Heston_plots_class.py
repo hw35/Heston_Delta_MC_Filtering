@@ -41,8 +41,7 @@ class HestonPlots:
         print("Saved trajectory plots of Stock price and volatility as Stock_Var_Plot.png")
 
 
-    def convergence_study(self,simulator: HestonMonteCarlo, path_counts: List[int], 
-                        analytical_delta: float = 0.630402, seed: int = 42):
+    def convergence_study(self,simulator, path_counts, analytical_delta, seed):
         """
         Study convergence of Monte Carlo delta estimate.
         """
@@ -89,7 +88,7 @@ class HestonPlots:
         plt.savefig('./plots/Delta_Convergence.png')
         print("Saved convergence of Delta estimates as Delta_Convergence.png")
 
-    def simulate_delta_hedging(self,simulator: HestonMonteCarlo, seed, rehedge_steps=1):
+    def simulate_delta_hedging(self,simulator, seed, rehedge_steps=1):
         """
         Simulates a delta-hedged path for a Short Call position.
         
@@ -153,7 +152,7 @@ class HestonPlots:
 
         return t_grid, S, v, deltas, portfolio_value
 
-    def simulate_delta_vega_hedging(self, simulator: HestonMonteCarlo, seed, rehedge_steps=1):
+    def simulate_delta_vega_hedging(self, simulator, seed, rehedge_steps):
         """
         Simulates a delta-vega-hedged path for a Short Call position.
         Implements the full Heston hedging portfolio: Pi = V + Delta*S + phi*U
@@ -184,17 +183,17 @@ class HestonPlots:
         tau = simulator.params.tau
 
         # Price and Greeks of target option V
-        V0           = simulator.get_bs_price(S[0], tau, v[0])
-        deltas[0]    = simulator.get_bs_delta(S[0], tau)
-        vegas_V[0]   = simulator.get_bs_vega(S[0], tau)
+        V0 = simulator.get_bs_price(S[0], tau, v[0])
+        deltas[0] = simulator.get_bs_delta(S[0], tau)
+        vegas_V[0] = simulator.get_bs_vega(S[0], tau)
 
         # Price and Greeks of hedging option U (different strike/maturity)
-        U0           = simulator.get_bs_price_U(S[0], tau, v[0])
-        vegas_U[0]   = simulator.get_bs_vega_U(S[0], tau)
+        U0 = simulator.get_bs_price_U(S[0], tau, v[0])
+        vegas_U[0] = simulator.get_bs_vega_U(S[0], tau)
 
         # phi: chosen so that phi * vega_U cancels vega_V
         # From the Heston PDE hedge condition: vega_V + phi * vega_U = 0
-        phis[0]            = -vegas_V[0] / vegas_U[0]
+        phis[0] = -vegas_V[0] / vegas_U[0]
         stock_holdings[0]  = deltas[0]
         option_U_holdings[0] = phis[0]
 
@@ -211,8 +210,8 @@ class HestonPlots:
             cash[i] = cash[i-1] * np.exp(simulator.params.r * dt)
 
             # Current prices and Greeks
-            V_i       = simulator.get_bs_price(S[i], tau, v[i])
-            U_i       = simulator.get_bs_price_U(S[i], tau, v[i])
+            V_i = simulator.get_bs_price(S[i], tau, v[i])
+            U_i = simulator.get_bs_price_U(S[i], tau, v[i])
 
             current_delta   = simulator.get_bs_delta(S[i], tau)
             current_vega_V  = simulator.get_bs_vega(S[i], tau)
@@ -239,7 +238,7 @@ class HestonPlots:
                 cash[i] -= options_to_trade * U_i
                 option_U_holdings[i] = current_phi
             else:
-                stock_holdings[i]    = stock_holdings[i-1]
+                stock_holdings[i] = stock_holdings[i-1]
                 option_U_holdings[i] = option_U_holdings[i-1]
 
             # Portfolio value: stock + hedging option + cash
@@ -250,7 +249,7 @@ class HestonPlots:
 
         return t_grid, S, v, deltas, phis, portfolio_value
 
-    def plot_hedging_trajectory(self, simulator: HestonMonteCarlo, seed=42):
+    def plot_hedging_trajectory(self, simulator, seed):
         seeds = [x for x in range(1, 20)]
         
         fig, axes = plt.subplots(6, 1, figsize=(12, 22))
