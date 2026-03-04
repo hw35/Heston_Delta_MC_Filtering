@@ -110,5 +110,5 @@ if __name__ == "__main__":
     path_counts = [100, 500, 1000, 2000, 3500, 5000]
     plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=42)
     
-    plotter.plot_hedging_trajectory(simulator,10,seed=123)
+    plotter.plot_hedging_trajectory(simulator,10,seed=123,control_var=False)
 

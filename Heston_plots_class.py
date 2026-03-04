@@ -152,7 +152,7 @@ class HestonPlots:
 
         return t_grid, S, v, deltas, portfolio_value
 
-    def simulate_delta_vega_hedging(self, simulator, seed, rehedge_steps):
+    def delta_vega_hedging(self, simulator, seed, rehedge_steps):
         """
         Simulates a delta-vega-hedged path for a Short Call position.
         Implements the full Heston hedging portfolio: Pi = V + Delta*S + phi*U
@@ -367,16 +367,21 @@ class HestonPlots:
 
         return t_grid, S, v, deltas, phis, portfolio_value
 
-    def plot_hedging_trajectory(self, simulator, N_paths, seed):
+    def plot_hedging_trajectory(self, simulator, N_paths, seed, control_var):
         seeds = [x for x in range(1, 20)]
         
-        fig, axes = plt.subplots(6, 1, figsize=(12, 22))
-        ax1, ax2, ax3, ax4, ax5, ax6 = axes
+        fig, axes = plt.subplots(5, 1, figsize=(12, 18))
+        ax2, ax3, ax4, ax5, ax6 = axes
 
         for seed in seeds:
-            t, S, v, deltas, phis, port_val = self.CV_delta_vega_hedging(
+            if(control_var):
+                t, S, v, deltas, phis, port_val = self.CV_delta_vega_hedging(
                 simulator, N_paths, seed=seed, rehedge_steps=1
-            )
+                )
+            else:
+                t, S, v, deltas, phis, port_val = self.delta_vega_hedging(
+                    simulator, seed=seed, rehedge_steps=1
+                )
             # Compute portfolio components at each timestep
             V = np.array([
                 simulator.get_bs_price(S[i], simulator.params.tau - t[i], vol_proxy=np.sqrt(v[i]), strike = None)
@@ -397,7 +402,7 @@ class HestonPlots:
             lw = 0.8
 
             # --- Plot each component ---
-            ax1.plot(t, S, alpha=alpha, linewidth=lw)
+            #ax1.plot(t, S, alpha=alpha, linewidth=lw)
             ax2.plot(t, V, alpha=alpha, linewidth=lw)
             ax3.plot(t, delta_S, alpha=alpha, linewidth=lw)
             ax4.plot(t, phi_U, alpha=alpha, linewidth=lw)
@@ -411,11 +416,11 @@ class HestonPlots:
                 )
 
         # 1. Stock Price
-        ax1.axhline(simulator.params.K, color='r', linestyle='--', label='Strike K')
-        ax1.set_ylabel('Stock Price $S$')
-        ax1.set_title('Underlying Asset Path')
-        ax1.legend(fontsize=8)
-        ax1.grid(True, alpha=0.3)
+        # ax1.axhline(simulator.params.K, color='r', linestyle='--', label='Strike K')
+        # ax1.set_ylabel('Stock Price $S$')
+        # ax1.set_title('Underlying Asset Path')
+        # ax1.legend(fontsize=8)
+        # ax1.grid(True, alpha=0.3)
 
         # 2. Option V (target option liability)
         ax2.set_ylabel('Value')
