@@ -38,10 +38,11 @@ class HestonPlots:
         ax2.legend()
         plt.tight_layout()
         plt.savefig('./plots/Stock_Var_Plot.png', dpi=150)
+        plt.savefig('./plots_CV/Stock_Var_Plot.png', dpi=150)
         print("Saved trajectory plots of Stock price and volatility as Stock_Var_Plot.png")
 
 
-    def convergence_study(self,simulator, path_counts, analytical_delta, seed):
+    def convergence_study(self,simulator, path_counts, analytical_delta, seed, control_var):
         """
         Study convergence of Monte Carlo delta estimate.
         """
@@ -85,8 +86,12 @@ class HestonPlots:
         ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        plt.savefig('./plots/Delta_Convergence.png')
-        print("Saved convergence of Delta estimates as Delta_Convergence.png")
+        if(control_var):
+            plt.savefig('./plots_CV/Delta_Convergence_CV.png')
+            print("Saved convergence of Delta estimates with control variates as Delta_Convergence_CV.png")
+        else:
+            plt.savefig('./plots/Delta_Convergence.png')
+            print("Saved convergence of Delta estimates as Delta_Convergence.png")
 
     def simulate_delta_hedging(self,simulator, seed, rehedge_steps=1):
         """
@@ -282,8 +287,22 @@ class HestonPlots:
             h = fd_bump * S_i  # absolute bump size scales with S
 
             # --- Finite-difference Heston delta ---
-            # basically has run time error b/c inside loop below we're looping thru N_paths*N_steps number of simulations
-            delta_heston_finite_diff, error = simulator.estimate_delta_finite_diff(N_paths=N_paths, tau_i=tau_i, v_i=v_i, option_type="call",dS=h,seed=seed)
+            # Fixed this b/c originally just called simulator.estimate_delta_fd 
+            # but there was issues with internal params being dynamically modified and not resetted after each call
+            # 1. SAVE the original simulator state
+            orig_tau = simulator.params.tau
+            orig_S0 = simulator.params.S0
+            orig_v0 = simulator.params.v0
+
+            # --- Finite-difference Heston delta ---
+            delta_heston_finite_diff, error = simulator.estimate_delta_finite_diff(
+                N_paths=N_paths, tau_i=tau_i, v_i=v_i, option_type="call", dS=h, seed=seed
+            )
+
+            # 2. RESTORE the simulator state 
+            simulator.params.tau = orig_tau
+            if orig_S0 is not None: simulator.params.S0 = orig_S0
+            if orig_v0 is not None: simulator.params.v0 = orig_v0
 
             # --- Finite-difference BS delta (same bump, same spot) ---
             V_bs_up   = simulator.get_bs_price(S_i + h, tau_i, v_i)
@@ -451,5 +470,9 @@ class HestonPlots:
         ax6.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig('./plots/Portfolio_component.png', dpi=150)
-        print("Saved trajectory plots as Portfolio_component.png")
+        if(control_var): 
+            plt.savefig('./plots_CV/Portfolio_component_CV.png', dpi=150)
+            print("Saved trajectory plots with control variates as Portfolio_component_CV.png")
+        else: 
+            plt.savefig('./plots/Portfolio_component.png', dpi=150)
+            print("Saved trajectory plots as Portfolio_component.png")
