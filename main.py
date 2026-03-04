@@ -72,7 +72,7 @@ if __name__ == "__main__":
     
     N_paths_MC = 100
     path_counts_analytic = 10000
-    paths_to_print = np.logspace(np.log10(100), np.log10(10000), num=10, dtype=int)
+    paths_to_print = np.logspace(np.log10(100), np.log10(10000), num=6, dtype=int)
     #print(f"\nUsing {N_paths:,} paths...")
     
     # _,call_price, call_std = simulator.price_option(N_paths, 'call', seed=42)
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     # print(f"  S·exp(-q·T) - K·exp(-r·T) = ${pcp_rhs:.4f}")
     # print(f"  Difference: ${abs(pcp_lhs - pcp_rhs):.4f}")
     
-    print(f"\nAnalytic Estimation of delta with {path_counts_analytic:,} paths...")
+    print(f"\nChecking convergence of generated Heston MC deltas with {path_counts_analytic:,} paths...")
     start = time.time()
     delta, delta_std = simulator.estimate_delta_finite_diff(N_paths=path_counts_analytic, tau_i=simulator.params.tau, v_i=simulator.params.v0, option_type='call', dS=0.01, seed=42)
     elapsed = time.time() - start
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     
     # Convergence study
     print("\n" + "-"*80)
-    print(f"\nMonte Carlo Estimation of delta with {N_paths_MC:,} paths...")
+    print(f"Monte Carlo Estimation of delta with {N_paths_MC:,} paths...")
     print("-"*80)
 
     regular_mc = 1
@@ -114,21 +114,17 @@ if __name__ == "__main__":
     plotter.convergence_study(simulator,paths_to_print, simulator.params.analytical_delta, seed=42)
 
     print("\n" + "-"*80)
-    print(f"\nSummary statistics on {len(seeds)} number of simulations of {N_paths_MC} paths each with techniques:")
+    print(f"Summary statistics on {len(seeds)} number of simulations of {N_paths_MC} paths each with techniques:")
     print("-"*80)
-    plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=1)
-    plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=2)
-    plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=3)
-    #plotter.plot_hedging_trajectory(simulator,model,N_paths=20,seeds=seeds,tech=penalized_least_squares)
-
-    # plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=42, tech = regular_mc)
-    # plotter.plot_hedging_trajectory(simulator,technique,N_paths=10,seed=123, tech=regular_mc)
-
-    # plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=42, tech = control_variate)
-    # plotter.plot_hedging_trajectory(simulator,technique,N_paths=10,seed=123, tech=control_variate)
-
+    
     # for i in range(3):
-    #     plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=42, tech = i)
-    #     plotter.plot_hedging_trajectory(simulator,technique,N_paths=10,seed=123,tech=i)
+    #     plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=i+1)
+
+    print("\n" + "-"*80)
+    print(f"Plotting trajectory of portfolio with {len(seeds)} number of simulations of {20} paths each with techniques:")
+    print("-"*80)    
+    for i in range(3):
+        plotter.plot_hedging_trajectory(simulator,model,N_paths=20,seeds = seeds,tech=i+1)
+
 
 
