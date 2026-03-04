@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from Heston_MC_class import HestonMonteCarlo
 from Heston_params_class import HestonParams
 from Heston_plots_class import HestonPlots
+from Heston_Hedging_class import HestonHedging
 from analytic_soln import analytic_heston_delta
 
 def get_params_user_input():
@@ -52,9 +53,10 @@ if __name__ == "__main__":
         value = getattr(params, field)
         print(f"  {field:10s} = {value}")
     
-    # Create simulator
+    # instance of simulator
     simulator = HestonMonteCarlo(params, N_steps=100)
-    
+    # instance of technique 
+    technique = HestonHedging()
     # Simulate and plot a few paths
     print("\n" + "-"*80)
     print("Simulating sample paths...")
@@ -110,5 +112,5 @@ if __name__ == "__main__":
     path_counts = [100, 500, 1000, 2000, 3500, 5000]
     plotter.convergence_study(simulator,path_counts, simulator.params.analytical_delta, seed=42, control_var=False)
     
-    plotter.plot_hedging_trajectory(simulator,10,seed=123,control_var=True)
+    plotter.plot_hedging_trajectory(simulator,technique,10,seed=123,control_var=True)
 
