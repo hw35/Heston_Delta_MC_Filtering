@@ -1,11 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from typing import List
-import time
 from dataclasses import dataclass
-
-from Heston_MC_class import HestonMonteCarlo
-
+import scipy.sparse as sparse
+from scipy.sparse.linalg import spsolve
 @dataclass
 class HestonHedging:
     def simulate_delta_hedging(self,simulator, seed, rehedge_steps=1):
@@ -298,5 +294,145 @@ class HestonHedging:
             portfolio_value[i] = (stock_holdings[i] * S[i]
                                 + option_U_holdings[i] * U_i
                                 + cash[i])
+
+        return t_grid, S, v, deltas, phis, portfolio_value
+    
+    def apply_pls_filter(self, deltas: np.ndarray, lam: float) -> np.ndarray:
+        """
+        Applies a Penalized Least Squares filter to a 1D array.
+        """
+        N = len(deltas)
+        if N <= 2:
+            return deltas
+
+        diags = np.array([1, -2, 1])
+        D = sparse.diags(diags, [0, 1, 2], shape=(N-2, N), dtype=None)
+        I = sparse.eye(N)
+        A = I + lam * D.T.dot(D)
+        A_csc = A.tocsc() # formatting for spsolve
+        
+        return spsolve(A_csc, deltas)
+    
+    def CV_delta_vega_hedging_pls(self, simulator, N_paths, seed, rehedge_steps, b=1.0, fd_bump=1e-4, pls_lambda = 100.0):
+        # 1. Simulate the Real World Path
+        t_grid, S, v = simulator.simulate_path(seed=seed)
+
+        # 2. Initialize arrays
+        portfolio_value   = np.zeros(len(t_grid))
+        deltas            = np.zeros(len(t_grid))       # Will store the SMOOTHED deltas
+        deltas_noisy      = np.zeros(len(t_grid))       # Will store the RAW CV deltas
+        vegas_V           = np.zeros(len(t_grid))
+        vegas_U           = np.zeros(len(t_grid))
+        phis              = np.zeros(len(t_grid))
+        stock_holdings    = np.zeros(len(t_grid))
+        option_U_holdings = np.zeros(len(t_grid))
+        cash              = np.zeros(len(t_grid))
+
+        def compute_cv_delta(S_i, tau_i, v_i):
+            h = fd_bump * S_i  
+
+            # Save state
+            orig_tau = simulator.params.tau
+            orig_S0 = simulator.params.S0
+            orig_v0 = simulator.params.v0
+
+            delta_heston_finite_diff, _ = simulator.estimate_delta_finite_diff(
+                N_paths=N_paths, tau_i=tau_i, v_i=v_i, option_type="call", dS=h, seed=seed
+            )
+
+            # Restore state
+            simulator.params.tau = orig_tau
+            if orig_S0 is not None: simulator.params.S0 = orig_S0
+            if orig_v0 is not None: simulator.params.v0 = orig_v0
+
+            V_bs_up   = simulator.get_bs_price(S_i + h, tau_i, v_i)
+            V_bs_down = simulator.get_bs_price(S_i - h, tau_i, v_i)
+            delta_bs_finite_diff = (V_bs_up - V_bs_down) / (2 * h)
+            delta_bs_analytical = simulator.get_bs_delta(S_i, tau_i)
+
+            return delta_heston_finite_diff - b * (delta_bs_finite_diff - delta_bs_analytical)
+
+        # 3. Initial Setup (t=0)
+        tau = simulator.params.tau
+
+        V0 = simulator.get_bs_price(S[0], tau, v[0], strike=None)
+        vegas_V[0] = simulator.get_bs_vega(S[0], tau)
+        U0 = simulator.get_bs_price_U(S[0], tau, v[0])
+        vegas_U[0] = simulator.get_bs_vega_U(S[0], tau)
+
+        if abs(vegas_V[0]) == 0 or abs(-vegas_V[0] / vegas_U[0]) > 100:
+            phis[0] = 0
+        else:
+            phis[0] = -vegas_V[0] / vegas_U[0]
+        
+        # At t=0, noisy and smoothed delta are the same
+        initial_delta = compute_cv_delta(S[0], tau, v[0])
+        deltas_noisy[0] = initial_delta
+        deltas[0] = initial_delta
+        
+        stock_holdings[0] = deltas[0]
+        option_U_holdings[0] = phis[0]
+        cash[0] = V0 - (stock_holdings[0] * S[0]) - (option_U_holdings[0] * U0)
+
+        # 4. Step through time
+        for i in range(1, len(t_grid)):
+            dt  = t_grid[i] - t_grid[i-1]
+            tau = max(simulator.params.tau - t_grid[i], 1e-6)
+
+            cash[i] = cash[i-1] * np.exp(simulator.params.r * dt)
+
+            V_i = simulator.get_bs_price(S[i], tau, v[i], strike=None)
+            U_i = simulator.get_bs_price_U(S[i], tau, v[i])
+
+            current_vega_V = simulator.get_bs_vega(S[i], tau, vol_proxy=None, strike=None)
+            current_vega_U = simulator.get_bs_vega_U(S[i], tau, vol_proxy=None)
+
+            if abs(current_vega_U) == 0 or abs(-current_vega_V / current_vega_U) > 100:
+                current_phi = phis[i-1]
+            else:
+                current_phi = -current_vega_V / current_vega_U
+
+            # -------------------------------------------------------------
+            # PLS Causal Filtering Logic
+            # -------------------------------------------------------------
+            
+            # 1. Compute and store the raw, noisy CV delta
+            raw_cv_delta = compute_cv_delta(S[i], tau, v[i])
+            raw_cv_delta = np.clip(raw_cv_delta, -1.0, 1.0)
+            deltas_noisy[i] = raw_cv_delta
+            
+            # 2. Rehedge logic with PLS smoothing
+            if i % rehedge_steps == 0 and i < len(t_grid) - 1:
+                
+                # Apply PLS filter causally: only use data up to current step i
+                if i >= 2:
+                    smoothed_history = self.apply_pls_filter(deltas_noisy[:i+1], lam=pls_lambda)
+                    current_delta = smoothed_history[-1] # Extract the causal estimate for time i
+                else:
+                    current_delta = deltas_noisy[i] # Not enough data to smooth yet
+                
+                # Store the smoothed delta
+                deltas[i] = current_delta
+                
+                # Trade based on the SMOOTHED delta
+                shares_to_trade = current_delta - stock_holdings[i-1]
+                cash[i] -= shares_to_trade * S[i]
+                stock_holdings[i] = current_delta
+
+                options_to_trade = current_phi - option_U_holdings[i-1]
+                cash[i] -= options_to_trade * U_i
+                option_U_holdings[i] = current_phi
+            else:
+                # If not rehedging, just carry over previous positions
+                deltas[i] = deltas[i-1]
+                stock_holdings[i] = stock_holdings[i-1]
+                option_U_holdings[i] = option_U_holdings[i-1]
+
+            portfolio_value[i] = (stock_holdings[i] * S[i]
+                                + option_U_holdings[i] * U_i
+                                + cash[i])
+            vegas_V[i] = current_vega_V
+            vegas_U[i] = current_vega_U
+            phis[i]    = current_phi
 
         return t_grid, S, v, deltas, phis, portfolio_value

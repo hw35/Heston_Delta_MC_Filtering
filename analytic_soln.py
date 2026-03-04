@@ -2,10 +2,10 @@ import numpy as np
 from scipy.integrate import quad
 
 def analytic_heston_delta(S,K,r,v0,lambd,kappa,theta,sigma,rho,tau,q):
+    print("Calculating analytical delta from model parameters")
     P1 = analytic_heston_prob(S,K,r,v0,lambd,kappa,theta,sigma,rho,tau,True,q)
     delta = np.exp(-q*tau)*P1
     print("\n" + "-"*80)
-    print("Analytic Delta is ", delta)
     print("-"*80)
     return delta
 
@@ -34,5 +34,5 @@ def analytic_heston_chf(S,K,r,v0,lambd,kappa,theta,sigma,rho,tau,isP1,phi,q):
     C = (r-q)*1j*phi*tau + a/(sigma**2) * ((Q_val-d)*tau-2*np.log(G_val))
 
     f = np.exp(C+D*v0+1j*phi*x)
-    integ = ((np.exp(-1j*phi*np.log(K))*f)/(1j*phi)).real
-    return integ
+    integral = ((np.exp(-1j*phi*np.log(K))*f)/(1j*phi)).real
+    return integral

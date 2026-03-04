@@ -43,7 +43,7 @@ class HestonPlots:
         print("Saved trajectory plots of Stock price and volatility as Stock_Var_Plot.png")
 
 
-    def convergence_study(self,simulator, path_counts, analytical_delta, seed, control_var):
+    def convergence_study(self,simulator, paths_to_print, analytical_delta, seed):
         """
         Study convergence of Monte Carlo delta estimate.
         """
@@ -54,23 +54,22 @@ class HestonPlots:
         print(f"\n{'N_paths':<12} {'Delta':<12} {'Error':<12} {'Time (s)':<12}")
         print("-" * 50)
         
-        for N in path_counts:
+        for N in paths_to_print:
             start = time.time()
-            delta, _ = simulator.estimate_delta_finite_diff(N, tau_i = simulator.params.tau, v_i = simulator.params.v0, option_type = 'call', dS=0.01, seed=seed)
+            delta, _ = simulator.estimate_delta_finite_diff(N, tau_i = simulator.params.tau, v_i = simulator.params.v0, option_type = 'call', dS=0.01, seed = seed)
             elapsed = time.time() - start
-            
+
             deltas.append(delta)
             error = abs(delta - analytical_delta)
             errors.append(error)
             times.append(elapsed)
-            
             print(f"{N:<12,} {delta:<12.6f} {error:<12.6f} {elapsed:<12.2f}")
         
         # Plot convergence
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         
         # Delta convergence
-        ax1.semilogx(path_counts, deltas, 'bo-', label='MC Estimate', linewidth=2, markersize=8)
+        ax1.semilogx(paths_to_print, deltas, 'bo-', label='MC Estimate', linewidth=2, markersize=8)
         ax1.axhline(y=analytical_delta, color='r', linestyle='--', 
                     label=f'Analytical = {analytical_delta:.6f}', linewidth=2)
         ax1.set_xlabel('Number of Paths')
@@ -87,29 +86,98 @@ class HestonPlots:
         ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        if(control_var):
-            plt.savefig('./plots_CV/Delta_Convergence_CV.png')
-            print("Saved convergence of Delta estimates with control variates as Delta_Convergence_CV.png")
-        else:
-            plt.savefig('./plots/Delta_Convergence.png')
-            print("Saved convergence of Delta estimates as Delta_Convergence.png")
+        plt.savefig('./plots/Delta_Convergence.png')
+        print("Saved convergence of Delta estimates with control variates as Delta_Convergence_CV.png")
 
+    def plot_mc_delta_estimates(self, simulator, model, N_paths, seeds, tech, b=1.0, fd_bump=1e-4, pls_lambda=100.0):
+        """
+        Plots the initial Delta estimates across different seeds and calculates 
+        estimator variance and relative error.
+        """
+        deltas = []
+        start = time.time()
 
-    def plot_hedging_trajectory(self, simulator, technique: HestonHedging, N_paths, seed, control_var):
-        seeds = [x for x in range(1, 20)]
+        for seed in seeds:
+            # Execute the correct technique based on the 'tech' parameter
+            if tech == 1:
+                _, _, _, d, _, _ = model.delta_vega_hedging(simulator, seed, rehedge_steps=1)
+            elif tech == 2:
+                _, _, _, d, _, _ = model.CV_delta_vega_hedging(simulator, N_paths, seed, rehedge_steps=1, b=b, fd_bump=fd_bump)
+            else:
+                _, _, _, d, _, _ = model.CV_delta_vega_hedging_pls(simulator, N_paths, seed, rehedge_steps=1, b=b, fd_bump=fd_bump, pls_lambda=pls_lambda)
+            
+            # Append the delta estimate at t=0 for this specific seed
+            deltas.append(d[-1])
+
+        elapsed = time.time() - start
+        
+        # Convert to numpy array for analytics
+        deltas = np.array(deltas)
+        last_delta = deltas[-1]
+        true_delta = simulator.params.analytical_delta
+
+        # --- 1. Plotting ---
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(seeds, deltas, 'bo-', label='Simulated Delta at $t=0$', alpha=0.7)
+        ax.axhline(y=true_delta, color='r', linestyle='--', linewidth=2, label=f'Analytical = {true_delta:.6f}')
+        
+        ax.set_xlabel('Seed')
+        ax.set_ylabel('Delta Estimate $\Delta$')
+        technique_name = {1: "Regular MC", 2: "Control Variate", 3: "CV + PLS"}[tech]
+        ax.set_title(f'Monte Carlo Delta Estimates Across Independent Seeds\n({technique_name})')
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        plt.tight_layout()
+
+        # --- 2. Analytics ---
+        estimator_variance = np.var(deltas, ddof=1)
+        relative_errors = np.abs((deltas - true_delta) / true_delta)
+        
+        # Multiply by 100 to format nicely with the '%' symbol in your print statement
+        mean_relative_error = np.mean(relative_errors) * 100 
+        mean_delta = np.mean(deltas)
+
+        average_bias = abs(np.mean(deltas) - true_delta)
+        relative_ave_bias = (average_bias / true_delta) * 100
+
+        tech_name_full = {1: "Regular MC estimate", 2: "Control Variate estimate", 3: "CV and PLS estimate"}[tech]
+
+        print(f"\n{tech_name_full}")
+        print(f"  Analytical Delta:          {true_delta:.6f}")
+        print(f"  Average Simulated Delta:   {mean_delta:.6f}")
+        print(f"  Estimator Variance:        {estimator_variance:.6e}") 
+        print(f"  Average Relative Error:    {mean_relative_error:.6f}%")
+        print(f"  Average Relative Bias:     {relative_ave_bias:.6f}%")
+        print(f"  Computation Time:          {elapsed:.2f} seconds")
+
+        if(tech == 1):
+            plt.savefig('./plots/Delta_Estimates.png', dpi=150)
+            print("Saved Delta Convergence plots for regular MC as Delta_Estimates.png")
+        elif(tech == 2): 
+            plt.savefig('./plots_CV/Delta_Estimates_CV.png', dpi=150)
+            print("Saved Delta Convergence plots for Control Variate as Delta_Estimates_CV.png")
+        else: 
+            plt.savefig('./plots_PLS/Delta_Estimates_PLS.png', dpi=150)
+            print("Saved Delta Convergence plots for PLS as Delta_Estimates_PLS.png")
+
+    def plot_hedging_trajectory(self, simulator, model: HestonHedging, N_paths, seeds, tech):
         
         fig, axes = plt.subplots(5, 1, figsize=(12, 18))
         ax2, ax3, ax4, ax5, ax6 = axes
         for seed in seeds:
-            if(control_var):
-                t, S, v, deltas, phis, port_val = technique.CV_delta_vega_hedging(
-                simulator, N_paths, seed=seed, rehedge_steps=1
-                )
-            else:
-                t, S, v, deltas, phis, port_val = technique.delta_vega_hedging(
+            if(tech == 1):
+                t, S, v, deltas, phis, port_val = model.delta_vega_hedging(
                     simulator, seed=seed, rehedge_steps=1
                 )
-            # Compute portfolio components at each timestep
+            elif(tech==2):
+                t, S, v, deltas, phis, port_val = model.CV_delta_vega_hedging(
+                    simulator, N_paths, seed=seed, rehedge_steps=1
+                )
+            else:
+                t, S, v, deltas, phis, port_val = model.CV_delta_vega_hedging_pls(
+                    simulator, N_paths, seed=seed, rehedge_steps=1
+                )                
+        # Compute portfolio components at each timestep
             V = np.array([
                 simulator.get_bs_price(S[i], simulator.params.tau - t[i], vol_proxy=np.sqrt(v[i]), strike = None)
                 for i in range(len(t))
@@ -178,9 +246,12 @@ class HestonPlots:
         ax6.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        if(control_var): 
+        if(tech == 1):
+            plt.savefig('./plots/Portfolio_component.png', dpi=150)
+            print("Saved trajectory plots as Portfolio_component.png")
+        elif(tech == 2): 
             plt.savefig('./plots_CV/Portfolio_component_CV.png', dpi=150)
             print("Saved trajectory plots with control variates as Portfolio_component_CV.png")
         else: 
-            plt.savefig('./plots/Portfolio_component.png', dpi=150)
-            print("Saved trajectory plots as Portfolio_component.png")
+            plt.savefig('./plots_PLS/Portfolio_component_PLS.png', dpi=150)
+            print("Saved trajectory plots with PLS smoother as Portfolio_component_PLS.png")
