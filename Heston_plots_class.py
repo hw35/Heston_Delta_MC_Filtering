@@ -145,7 +145,7 @@ class HestonPlots:
         print(f"\n{tech_name_full}")
         print(f"  Analytical Delta:          {true_delta:.6f}")
         print(f"  Average Simulated Delta:   {mean_delta:.6f}")
-        print(f"  Estimator Variance:        {estimator_variance:.6e}%") 
+        print(f"  Estimator Variance:        {estimator_variance:.6f}%") 
         print(f"  Average Relative Error:    {mean_relative_error:.6f}%")
         print(f"  Average Relative Bias:     {relative_ave_bias:.6f}%")
         print(f"  Computation Time:          {elapsed:.2f} seconds")

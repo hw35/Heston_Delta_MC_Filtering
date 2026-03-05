@@ -70,7 +70,7 @@ if __name__ == "__main__":
     print("Monte Carlo Pricing")
     print("-"*80)
     
-    N_paths_MC = 100
+    N_paths_MC = 10000
     path_counts_analytic = 10000
     paths_to_print = np.logspace(np.log10(100), np.log10(10000), num=6, dtype=int)
     #print(f"\nUsing {N_paths:,} paths...")
@@ -117,8 +117,8 @@ if __name__ == "__main__":
     print(f"Summary statistics on {len(seeds)} number of simulations of {N_paths_MC} paths each with techniques:")
     print("-"*80)
     
-    # for i in range(3):
-    #     plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=i+1)
+    for i in range(3):
+        plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=i+1)
 
     print("\n" + "-"*80)
     print(f"Plotting trajectory of portfolio with {len(seeds)} number of simulations of {20} paths each with techniques:")
