@@ -1,5 +1,6 @@
 import numpy as np
 import time
+from datetime import timedelta
 from dataclasses import dataclass
 
 
@@ -70,8 +71,9 @@ if __name__ == "__main__":
     print("Monte Carlo Pricing")
     print("-"*80)
     
-    N_paths_MC = 10000
-    path_counts_analytic = 10000
+    N_paths_MC = 5000
+    num_sims = 10000
+    paths_per_sim = 100
     paths_to_print = np.logspace(np.log10(100), np.log10(10000), num=6, dtype=int)
     #print(f"\nUsing {N_paths:,} paths...")
     
@@ -89,21 +91,29 @@ if __name__ == "__main__":
     # print(f"  S·exp(-q·T) - K·exp(-r·T) = ${pcp_rhs:.4f}")
     # print(f"  Difference: ${abs(pcp_lhs - pcp_rhs):.4f}")
     
-    print(f"\nChecking convergence of generated Heston MC deltas with {path_counts_analytic:,} paths...")
+    print(f"\nSummary statistics of generated Heston MC deltas with {num_sims:,} simulations, each with {paths_per_sim} paths...\n")
     start = time.time()
-    delta, delta_std = simulator.estimate_delta_finite_diff(N_paths=path_counts_analytic, tau_i=simulator.params.tau, v_i=simulator.params.v0, option_type='call', dS=0.01, seed=42)
+    delta, delta_stde = simulator.estimate_delta_finite_diff(
+                                M_simulations= num_sims, 
+                                N_paths_per_sim= paths_per_sim, 
+                                tau_i=simulator.params.tau, 
+                                v_i=simulator.params.v0, 
+                                option_type='call', 
+                                dS=0.01
+    )
+
     elapsed = time.time() - start
+    formatted_time = str(timedelta(seconds=int(elapsed)))
     
-    print(f"\nResults:")
     print(f"  Analytical Delta:    {simulator.params.analytical_delta:.6f}")
-    print(f"  Monte Carlo Delta:   {delta:.6f} ± {1.96*delta_std:.6f}")
-    print(f"  Absolute Error:      {abs(delta - simulator.params.analytical_delta):.6f}")
+    print(f"  Monte Carlo Delta:   {delta:.6f} ± {1.96*delta_stde:.2e}")
+    print(f"  Absolute Error:      {abs(delta - simulator.params.analytical_delta)*100:.2f}%")
     print(f"  Relative Error:      {abs(delta - simulator.params.analytical_delta)/simulator.params.analytical_delta*100:.2f}%")
-    print(f"  Computation Time:    {elapsed:.2f} seconds")
+    print(f"  Computation Time:    {formatted_time}")
     
     # Convergence study
     print("\n" + "-"*80)
-    print(f"Monte Carlo Estimation of delta with {N_paths_MC:,} paths...")
+    print(f"Monte Carlo Estimation of delta with {N_paths_MC:,} simulations..., each with {paths_per_sim} paths...")
     print("-"*80)
 
     regular_mc = 1
@@ -111,20 +121,20 @@ if __name__ == "__main__":
     penalized_least_squares = 3
     seeds = [x for x in range(1, 21)]
 
-    plotter.convergence_study(simulator,paths_to_print, simulator.params.analytical_delta, seed=42)
+    #plotter.convergence_study(simulator,paths_to_print, paths_per_sim, simulator.params.analytical_delta, seed=42)
 
-    print("\n" + "-"*80)
-    print(f"Summary statistics on {len(seeds)} number of simulations of {N_paths_MC} paths each with techniques:")
-    print("-"*80)
+    # print("\n" + "-"*80)
+    # print(f"Summary statistics on {len(seeds)} number of simulations of {N_paths_MC} paths each with techniques:")
+    # print("-"*80)
     
-    for i in range(3):
-        plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=i+1)
+    # for i in range(3):
+    #     plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=i+1)
 
-    print("\n" + "-"*80)
-    print(f"Plotting trajectory of portfolio with {len(seeds)} number of simulations of {20} paths each with techniques:")
-    print("-"*80)    
-    for i in range(3):
-        plotter.plot_hedging_trajectory(simulator,model,N_paths=20,seeds = seeds,tech=i+1)
+    # print("\n" + "-"*80)
+    # print(f"Plotting trajectory of portfolio with {len(seeds)} number of simulations of {20} paths each with techniques:")
+    # print("-"*80)    
+    # for i in range(3):
+    #     plotter.plot_hedging_trajectory(simulator,model,N_paths=20,seeds = seeds,tech=i+1)
 
 
 

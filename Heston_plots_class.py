@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import List
 import time
+from datetime import timedelta
 from dataclasses import dataclass
 
 from Heston_MC_class import HestonMonteCarlo
@@ -43,7 +44,7 @@ class HestonPlots:
         print("Saved trajectory plots of Stock price and volatility as Stock_Var_Plot.png")
 
 
-    def convergence_study(self,simulator, paths_to_print, analytical_delta, seed):
+    def convergence_study(self,simulator, paths_to_print, paths_per_sim, analytical_delta, seed):
         """
         Study convergence of Monte Carlo delta estimate.
         """
@@ -56,14 +57,15 @@ class HestonPlots:
         
         for N in paths_to_print:
             start = time.time()
-            delta, _ = simulator.estimate_delta_finite_diff(N, tau_i = simulator.params.tau, v_i = simulator.params.v0, option_type = 'call', dS=0.01, seed = seed)
+            delta, _ = simulator.estimate_delta_finite_diff(N, paths_per_sim, tau_i = simulator.params.tau, v_i = simulator.params.v0, option_type = 'call', dS=0.01)
             elapsed = time.time() - start
+            formatted_time = str(timedelta(seconds=int(elapsed)))
 
             deltas.append(delta)
             error = abs(delta - analytical_delta)
             errors.append(error)
             times.append(elapsed)
-            print(f"{N:<12,} {delta:<12.6f} {error:<12.6f} {elapsed:<12.2f}")
+            print(f"{N:<12,} {delta:<12.6f} {error:<12.6f} {formatted_time}")
         
         # Plot convergence
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
@@ -106,10 +108,13 @@ class HestonPlots:
             else:
                 _, _, _, d, _, _ = model.CV_delta_vega_hedging_pls(simulator, N_paths, seed, rehedge_steps=1, b=b, fd_bump=fd_bump, pls_lambda=pls_lambda)
             
-            # Append the delta estimate at t=0 for this specific seed
+            # Append the delta estimate at t=N_steps/2 for this specific seed
+            ####
             deltas.append(d[-1])
 
         elapsed = time.time() - start
+        formatted_time = str(timedelta(seconds=int(elapsed)))
+
         
         # Convert to numpy array for analytics
         deltas = np.array(deltas)
@@ -133,7 +138,6 @@ class HestonPlots:
         estimator_variance = np.var(deltas, ddof=1)*100
         relative_errors = np.abs((deltas - true_delta) / true_delta)
         
-        # Multiply by 100 to format nicely with the '%' symbol in your print statement
         mean_relative_error = np.mean(relative_errors) * 100 
         mean_delta = np.mean(deltas)
 
@@ -148,7 +152,7 @@ class HestonPlots:
         print(f"  Estimator Variance:        {estimator_variance:.6f}%") 
         print(f"  Average Relative Error:    {mean_relative_error:.6f}%")
         print(f"  Average Relative Bias:     {relative_ave_bias:.6f}%")
-        print(f"  Computation Time:          {elapsed:.2f} seconds")
+        print(f"  Computation Time:          {formatted_time}")
 
         if(tech == 1):
             plt.savefig('./plots/Delta_Estimates.png', dpi=150)

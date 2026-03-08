@@ -90,45 +90,98 @@ class HestonMonteCarlo:
         
         return payoffs, price, std_error
     
-    def estimate_delta_finite_diff(self, N_paths: int, tau_i: float, v_i: float, option_type: str = 'call',
-                                  dS: float = 0.01, seed: int = None) -> Tuple[float, float]:
-
-        # Save original S0
+    def estimate_delta_finite_diff(self, M_simulations: int, N_paths_per_sim: int, tau_i: float, v_i: float, 
+                              option_type: str = 'call', dS: float = 0.01, alpha: float = 0.05) -> Tuple[float, float]:
+        
         S0_original = self.params.S0
+        estimated_deltas = np.zeros(M_simulations)
+        seed_history=[]
         
-        # Price at S0 + dS
-        self.params = HestonParams(
-            S0=S0_original + dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
-            v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
-            sigma=self.params.sigma, rho=self.params.rho, tau=tau_i, 
-            analytical_delta = self.params.analytical_delta
-        )
-        _, price_up, std_up = self.price_option(N_paths, option_type, seed)
-        
-        # Price at S0 - dS
-        self.params = HestonParams(
-            S0=S0_original - dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
-            v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
-            sigma=self.params.sigma, rho=self.params.rho, tau=tau_i,
-            analytical_delta = self.params.analytical_delta
-        )
-        _, price_down, std_down = self.price_option(N_paths, option_type, seed)
-        
+        # Run M independent simulations
+        for m in range(M_simulations):
+            seed = np.random.randint(0, 10e6)
+            while(seed in seed_history):
+                seed = np.random.randint(0, 10e6)
+            # 2. Price at S0 + dS
+            self.params = HestonParams(
+                S0=S0_original + dS, K=self.params.K, K_U=self.params.K_U, r=self.params.r, q=self.params.q,
+                v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+                sigma=self.params.sigma, rho=self.params.rho, tau=tau_i, 
+                analytical_delta=self.params.analytical_delta
+            )
+            _, price_up, _ = self.price_option(N_paths_per_sim, option_type, seed=seed)
+            
+            # 3. Price at S0 - dS
+            self.params = HestonParams(
+                S0=S0_original - dS, K=self.params.K, K_U=self.params.K_U, r=self.params.r, q=self.params.q,
+                v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+                sigma=self.params.sigma, rho=self.params.rho, tau=tau_i,
+                analytical_delta=self.params.analytical_delta
+            )
+            _, price_down, _ = self.price_option(N_paths_per_sim, option_type, seed=seed)
+            
+            # Calculate and store the delta for this specific simulation
+            estimated_deltas[m] = (price_up - price_down) / (2 * dS)
+            
         # Restore original S0
         self.params = HestonParams(
-            S0=S0_original, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
+            S0=S0_original, K=self.params.K, K_U=self.params.K_U, r=self.params.r, q=self.params.q,
             v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
             sigma=self.params.sigma, rho=self.params.rho, tau=tau_i,
-            analytical_delta = self.params.analytical_delta
+            analytical_delta=self.params.analytical_delta
         )
         
-        # Calculate delta
-        delta = (price_up - price_down) / (2 * dS)
+        # --- Statistics ---
         
-        # Approximate standard error
-        delta_std = np.sqrt(std_up**2 + std_down**2) / (2 * dS)
+        # 1. The final Delta estimate is the average of all macro-replications
+        final_delta = np.mean(estimated_deltas)
         
-        return delta, delta_std
+        # 2. The standard error across the M independent simulations
+        delta_std_error = np.std(estimated_deltas, ddof=1) / np.sqrt(M_simulations)
+
+        
+        return final_delta, delta_std_error
+    
+    # fix CI for average of each simulation and use order stats for across simulations
+    # def estimate_delta_finite_diff(self, N_paths: int, tau_i: float, v_i: float, option_type: str = 'call',
+    #                               dS: float = 0.01, seed: int = None) -> Tuple[float, float]:
+
+    #     # Save original S0
+    #     S0_original = self.params.S0
+        
+    #     # Price at S0 + dS
+    #     self.params = HestonParams(
+    #         S0=S0_original + dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
+    #         v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+    #         sigma=self.params.sigma, rho=self.params.rho, tau=tau_i, 
+    #         analytical_delta = self.params.analytical_delta
+    #     )
+    #     _, price_up, std_up = self.price_option(N_paths, option_type, seed)
+        
+    #     # Price at S0 - dS
+    #     self.params = HestonParams(
+    #         S0=S0_original - dS, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
+    #         v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+    #         sigma=self.params.sigma, rho=self.params.rho, tau=tau_i,
+    #         analytical_delta = self.params.analytical_delta
+    #     )
+    #     _, price_down, std_down = self.price_option(N_paths, option_type, seed)
+        
+    #     # Restore original S0
+    #     self.params = HestonParams(
+    #         S0=S0_original, K=self.params.K, K_U = self.params.K_U, r=self.params.r, q=self.params.q,
+    #         v0=v_i, kappa=self.params.kappa, theta=self.params.theta,
+    #         sigma=self.params.sigma, rho=self.params.rho, tau=tau_i,
+    #         analytical_delta = self.params.analytical_delta
+    #     )
+        
+    #     # Calculate delta
+    #     delta = (price_up - price_down) / (2 * dS)
+        
+    #     # Approximate standard error
+    #     delta_std = np.sqrt(std_up**2 + std_down**2) / (2 * dS)
+        
+    #     return delta, delta_std
 
     def get_bs_price(self, S, t_remaining, vol_proxy, strike = None) -> float:
         """Calculate Black-Scholes call option price."""
