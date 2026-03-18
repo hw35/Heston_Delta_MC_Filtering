@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from Heston_MC_class import HestonMonteCarlo
 from Heston_Hedging_class import HestonHedging
+from analytic_soln import analytic_stock_delta
 
 @dataclass
 class HestonPlots:
@@ -97,18 +98,25 @@ class HestonPlots:
         estimator variance and relative error.
         """
         ave_deltas_across_sims = []
+        deltas_across_sims = [[]]
         start = time.time()
+
+        #true_stock_deltas_over_time = model.analytical_delta_vega_hedging(simulator,seed)
+        #ave_true_delta = np.mean(true_stock_deltas_over_time)
+
+        true_stock_delta = analytic_stock_delta()
 
         # Execute the correct technique based on the 'tech' parameter
         for seed in range(n_sims):
             deltas = []
+            beta_CV = 0
             if tech == 1:
-                _, _, _, deltas, _, _ = model.delta_vega_hedging(
+                _, _, _, deltas, _, _, beta_CV = model.delta_vega_hedging(
                     simulator, n_paths_per_sim, seed, rehedge_steps=1, fd_bump=fd_bump
                 )
             elif tech == 2:
                 _, _, _, deltas, _, _ = model.CV_delta_vega_hedging(
-                    simulator, n_paths_per_sim, seed, rehedge_steps=1, b=b, fd_bump=fd_bump
+                    simulator, n_paths_per_sim, seed, beta_CV, rehedge_steps=1, b=b, fd_bump=fd_bump
                 )
             else:
                 _, _, _, deltas, _, _ = model.CV_delta_vega_hedging_pls(
@@ -116,6 +124,7 @@ class HestonPlots:
                 )
             ave_delta = np.mean(deltas)
             ave_deltas_across_sims.append(ave_delta)
+            deltas_across_sims.append(deltas)
 
         elapsed = time.time() - start
         formatted_time = str(timedelta(seconds=int(elapsed)))
@@ -124,13 +133,14 @@ class HestonPlots:
         # Convert to numpy array for analytics
         #print(deltas)
         ave_deltas_across_sims = np.array(ave_deltas_across_sims)
-        true_delta = simulator.params.analytical_delta
+        #true_stock_deltas_over_time = np.array(true_stock_deltas_over_time)
+        #true_delta = simulator.params.analytical_delta
 
         # --- 1. Plotting ---
         fig, ax = plt.subplots(figsize=(10, 6))
         #print(len(deltas))
         ax.plot(ave_deltas_across_sims, 'bo-', label=f'Average Delta from each Simulation with {n_paths_per_sim} paths', alpha=0.7)
-        ax.axhline(y=true_delta, color='r', linestyle='--', linewidth=2, label=f'Analytical = {true_delta:.6f}')
+        ax.axhline(y=true_stock_delta, color='r', linestyle='--', linewidth=2, label=f'Analytical = {true_stock_delta:.6f}')
         
         ax.set_xlabel('Simulation number')
         ax.set_ylabel('Delta Estimate $\Delta$')
@@ -142,18 +152,18 @@ class HestonPlots:
 
         # --- 2. Analytics ---
         estimator_variance = np.var(ave_deltas_across_sims, ddof=1)*100
-        relative_errors = np.abs((ave_deltas_across_sims - true_delta) / true_delta)
+        relative_errors = np.abs((ave_deltas_across_sims - true_stock_delta) / true_stock_delta)
         
         mean_relative_error = np.mean(relative_errors) * 100 
         mean_delta = np.mean(ave_deltas_across_sims)
 
-        average_bias = abs(np.mean(ave_deltas_across_sims) - true_delta)
-        relative_ave_bias = (average_bias / true_delta) * 100
+        average_bias = abs(np.mean(ave_deltas_across_sims) - true_stock_delta)
+        relative_ave_bias = (average_bias / true_stock_delta) * 100
 
         tech_name_full = {1: "Regular MC estimate", 2: "Control Variate estimate", 3: "CV and PLS estimate"}[tech]
 
         print(f"\n{tech_name_full}")
-        print(f"  Analytical Delta:          {true_delta:.4f}")
+        print(f"  Analytical Net Delta:      {true_stock_delta:.4f}")
         print(f"  Average Simulated Delta:   {mean_delta:.4f}")
         print(f"  Estimator Variance:        {estimator_variance:.4f}%") 
         print(f"  Average Relative Error:    {mean_relative_error:.4f}%")

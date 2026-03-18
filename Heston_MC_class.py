@@ -2,7 +2,8 @@ import numpy as np
 from typing import Tuple
 from scipy.stats import norm
 import warnings
-np.seterr(over='raise')
+#np.seterr(over='raise')
+from scipy.interpolate import RegularGridInterpolator
 
 from Heston_params_class import HestonParams
 
@@ -95,6 +96,58 @@ class HestonMonteCarlo:
         elif(std_error > 1):
             std_error = 1
         return payoffs, price, std_error
+    
+    # def build_analytical_interpolators(self, S_min, S_max, v_min, v_max, tau_max, K, K_U, grid_size):
+    #     """
+    #     Pre-computes analytical Greeks over a 3D grid (S, v, tau) and returns
+    #     fast interpolator objects.
+        
+    #     Args:
+    #         S_min, S_max: Bounds for the stock price
+    #         v_min, v_max: Bounds for the variance
+    #         tau_max: Maximum time to maturity (usually params.tau)
+    #         grid_size: Number of points per dimension (25^3 = 15,625 integrations)
+    #     """
+    #     print(f"Building 3D Analytical Interpolation Grid ({grid_size}^3 points)...")
+        
+    #     # 1. Define strictly ascending grid points (required by RegularGridInterpolator)
+    #     S_points = np.linspace(S_min, S_max, grid_size)
+    #     v_points = np.linspace(max(1e-6, v_min), v_max, grid_size)
+        
+    #     # tau must be ascending, so we go from near-zero to tau_max
+    #     tau_points = np.linspace(1e-6, tau_max, grid_size)
+
+    #     # 2. Initialize 3D arrays to hold the pre-computed Greeks
+    #     shape = (len(S_points), len(v_points), len(tau_points))
+    #     delta_V_grid = np.zeros(shape)
+    #     delta_U_grid = np.zeros(shape)
+    #     vega_V_grid  = np.zeros(shape)
+    #     vega_U_grid  = np.zeros(shape)
+
+    #     # 3. Populate the grids (This runs ONCE before the simulation)
+    #     for i, s in enumerate(S_points):
+    #         for j, v in enumerate(v_points):
+    #             for k, tau in enumerate(tau_points):
+                    
+    #                 # Call your heavy integration functions here
+    #                 delta_V_grid[i, j, k] = analytic_heston_delta(S=s, vi=v, tau=tau, K=K,isP1=True)
+    #                 delta_U_grid[i, j, k] = analytic_heston_delta(S=s, vi=v, tau=tau, K=K_U,isP1=True)
+                    
+    #                 vega_V_grid[i, j, k] = analytic_estimate_vega_fd(S=s, vi=v, tau=tau, K=K)
+    #                 vega_U_grid[i, j, k] = analytic_estimate_vega_fd(S=s, vi=v, tau=tau, K=K_U)
+
+    #     # 4. Create the Interpolator Objects
+    #     # bounds_error=False and fill_value=None allows it to extrapolate 
+    #     # safely if a Monte Carlo path jumps slightly outside the grid bounds.
+    #     kwargs = {'bounds_error': False, 'fill_value': None}
+        
+    #     interp_delta_V = RegularGridInterpolator((S_points, v_points, tau_points), delta_V_grid, **kwargs)
+    #     interp_delta_U = RegularGridInterpolator((S_points, v_points, tau_points), delta_U_grid, **kwargs)
+    #     interp_vega_V  = RegularGridInterpolator((S_points, v_points, tau_points), vega_V_grid, **kwargs)
+    #     interp_vega_U  = RegularGridInterpolator((S_points, v_points, tau_points), vega_U_grid, **kwargs)
+        
+    #     print("Interpolation Grid Built Successfully!")
+    #     return interp_delta_V, interp_delta_U, interp_vega_V, interp_vega_U
     
     # def estimate_delta_finite_diff(self, M_simulations: int, N_paths_per_sim: int, tau_i: float, v_i: float, 
     #                           option_type: str = 'call', dS: float = 0.01, alpha: float = 0.05) -> Tuple[float, float]:

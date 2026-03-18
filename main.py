@@ -67,8 +67,7 @@ if __name__ == "__main__":
         theta=0.05, sigma=0.5, rho=-0.8, tau=0.5, analytical_delta = 0
     )
     #params = get_params_user_input()
-    true_delta = analytic_heston_delta(params.S0,params.K,params.r,params.v0,params.lambd,params.kappa,
-                                       params.theta,params.sigma,params.rho,params.tau,params.q)
+    true_delta = analytic_heston_delta(S=params.S0,vi=params.v0,tau=params.tau,isP1=True,isU=False)
     params.analytical_delta = true_delta
 
     print("\nModel Parameters:")
@@ -130,7 +129,12 @@ if __name__ == "__main__":
 
     elapsed = time.time() - start
     formatted_time = str(timedelta(seconds=int(elapsed)))
-    
+
+
+     # Convergence study
+    print("-"*80)
+    num_sims = 1000
+    print("-"*80)
     # Calculate CI with order statistics to avoid assuming normality of distribution across simulations
     conf_level = 0.95
     conf_interval = order_stat_CI(ave_deltas_across_sims,conf_level)
@@ -143,25 +147,21 @@ if __name__ == "__main__":
     print(f"  Relative Error:       {abs(mean_delta - simulator.params.analytical_delta)/simulator.params.analytical_delta*100:.2f}%")
     print(f"  Computation Time:     {formatted_time}")
     
-    # Convergence study
-    print("\n" + "-"*80)
-    num_sims = 1000
-    print(f"One simulation of Monte Carlo Estimation of delta, each with {n_paths_per_sim} paths...")
-    print("-"*80)
+   
 
     #regular_mc = 1
     #control_variate = 2
     #penalized_least_squares = 3
     seeds_visual = [x for x in range(1, 21)]
-
+    print(f"One simulation of Monte Carlo Estimation of delta with {n_paths_per_sim} paths...")
     # confirming convergence of Delta for one simulation
-    #plotter.convergence_study(simulator, n_paths_per_sim, paths_to_print, simulator.params.analytical_delta)
+    plotter.convergence_study(simulator, n_paths_per_sim, paths_to_print, simulator.params.analytical_delta)
 
     print("\n" + "-"*80)
     print(f"Summary statistics on {n_sims} number of simulations of {n_paths_per_sim} paths each with techniques:")
     print("-"*80)
     
-    for i in range(3):
+    for i in range(2):
         plotter.plot_mc_delta_estimates(simulator, model, n_sims, n_paths_per_sim, seed=42, tech=i+1)
 
     print("\n" + "-"*80)
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     print("-"*80)    
     # for i in range(3):
     #     plotter.plot_hedging_trajectory(simulator,model,n_paths_per_sim,seeds = seeds,tech=i+1)
-    plotter.plot_hedging_trajectory(simulator,model,n_paths_per_sim,seeds = seeds_visual,tech=3)
+    #plotter.plot_hedging_trajectory(simulator,model,n_paths_per_sim,seeds = seeds_visual,tech=3)
 
 
 
