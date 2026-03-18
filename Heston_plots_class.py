@@ -44,7 +44,7 @@ class HestonPlots:
         print("Saved trajectory plots of Stock price and volatility as Stock_Var_Plot.png")
 
 
-    def convergence_study(self,simulator, paths_to_print, paths_per_sim, analytical_delta, seed):
+    def convergence_study(self,simulator, n_paths_per_sim, paths_to_print, analytical_delta):
         """
         Study convergence of Monte Carlo delta estimate.
         """
@@ -57,7 +57,7 @@ class HestonPlots:
         
         for N in paths_to_print:
             start = time.time()
-            delta, _ = simulator.estimate_delta_finite_diff(N, paths_per_sim, tau_i = simulator.params.tau, v_i = simulator.params.v0, option_type = 'call', dS=0.01)
+            delta, _ = simulator.estimate_delta_finite_diff(N, tau_i = simulator.params.tau, v_i = simulator.params.v0, option_type = 'call', dS=0.01, seed = 42)
             elapsed = time.time() - start
             formatted_time = str(timedelta(seconds=int(elapsed)))
 
@@ -89,69 +89,75 @@ class HestonPlots:
         
         plt.tight_layout()
         plt.savefig('./plots/Delta_Convergence.png')
-        print("Saved convergence of Delta estimates with control variates as Delta_Convergence_CV.png")
+        print("Saved convergence of Delta estimates from a singular simulation as Delta_Convergence.png")
 
-    def plot_mc_delta_estimates(self, simulator, model, N_paths, seeds, tech, b=1.0, fd_bump=1e-4, pls_lambda=100.0):
+    def plot_mc_delta_estimates(self, simulator, model, n_sims, n_paths_per_sim, seed, tech, b=1.0, fd_bump=1e-4, pls_lambda=100.0):
         """
         Plots the initial Delta estimates across different seeds and calculates 
         estimator variance and relative error.
         """
-        deltas = []
+        ave_deltas_across_sims = []
         start = time.time()
 
-        for seed in seeds:
-            # Execute the correct technique based on the 'tech' parameter
+        # Execute the correct technique based on the 'tech' parameter
+        for seed in range(n_sims):
+            deltas = []
             if tech == 1:
-                _, _, _, d, _, _ = model.delta_vega_hedging(simulator, seed, rehedge_steps=1)
+                _, _, _, deltas, _, _ = model.delta_vega_hedging(
+                    simulator, n_paths_per_sim, seed, rehedge_steps=1, fd_bump=fd_bump
+                )
             elif tech == 2:
-                _, _, _, d, _, _ = model.CV_delta_vega_hedging(simulator, N_paths, seed, rehedge_steps=1, b=b, fd_bump=fd_bump)
+                _, _, _, deltas, _, _ = model.CV_delta_vega_hedging(
+                    simulator, n_paths_per_sim, seed, rehedge_steps=1, b=b, fd_bump=fd_bump
+                )
             else:
-                _, _, _, d, _, _ = model.CV_delta_vega_hedging_pls(simulator, N_paths, seed, rehedge_steps=1, b=b, fd_bump=fd_bump, pls_lambda=pls_lambda)
-            
-            # Append the delta estimate at t=N_steps/2 for this specific seed
-            ####
-            deltas.append(d[-1])
+                _, _, _, deltas, _, _ = model.CV_delta_vega_hedging_pls(
+                    simulator, n_paths_per_sim, seed, rehedge_steps=1, b=b, fd_bump=fd_bump, pls_lambda=pls_lambda
+                )
+            ave_delta = np.mean(deltas)
+            ave_deltas_across_sims.append(ave_delta)
 
         elapsed = time.time() - start
         formatted_time = str(timedelta(seconds=int(elapsed)))
 
         
         # Convert to numpy array for analytics
-        deltas = np.array(deltas)
-        last_delta = deltas[-1]
+        #print(deltas)
+        ave_deltas_across_sims = np.array(ave_deltas_across_sims)
         true_delta = simulator.params.analytical_delta
 
         # --- 1. Plotting ---
         fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(seeds, deltas, 'bo-', label='Simulated Delta at $t=0$', alpha=0.7)
+        #print(len(deltas))
+        ax.plot(ave_deltas_across_sims, 'bo-', label=f'Average Delta from each Simulation with {n_paths_per_sim} paths', alpha=0.7)
         ax.axhline(y=true_delta, color='r', linestyle='--', linewidth=2, label=f'Analytical = {true_delta:.6f}')
         
-        ax.set_xlabel('Seed')
+        ax.set_xlabel('Simulation number')
         ax.set_ylabel('Delta Estimate $\Delta$')
         technique_name = {1: "Regular MC", 2: "Control Variate", 3: "CV + PLS"}[tech]
-        ax.set_title(f'Monte Carlo Delta Estimates Across Independent Seeds\n({technique_name})')
+        ax.set_title(f'Monte Carlo Delta Estimates Across Simulations\n({technique_name})')
         ax.grid(True, alpha=0.3)
         ax.legend()
         plt.tight_layout()
 
         # --- 2. Analytics ---
-        estimator_variance = np.var(deltas, ddof=1)*100
-        relative_errors = np.abs((deltas - true_delta) / true_delta)
+        estimator_variance = np.var(ave_deltas_across_sims, ddof=1)*100
+        relative_errors = np.abs((ave_deltas_across_sims - true_delta) / true_delta)
         
         mean_relative_error = np.mean(relative_errors) * 100 
-        mean_delta = np.mean(deltas)
+        mean_delta = np.mean(ave_deltas_across_sims)
 
-        average_bias = abs(np.mean(deltas) - true_delta)
+        average_bias = abs(np.mean(ave_deltas_across_sims) - true_delta)
         relative_ave_bias = (average_bias / true_delta) * 100
 
         tech_name_full = {1: "Regular MC estimate", 2: "Control Variate estimate", 3: "CV and PLS estimate"}[tech]
 
         print(f"\n{tech_name_full}")
-        print(f"  Analytical Delta:          {true_delta:.6f}")
-        print(f"  Average Simulated Delta:   {mean_delta:.6f}")
-        print(f"  Estimator Variance:        {estimator_variance:.6f}%") 
-        print(f"  Average Relative Error:    {mean_relative_error:.6f}%")
-        print(f"  Average Relative Bias:     {relative_ave_bias:.6f}%")
+        print(f"  Analytical Delta:          {true_delta:.4f}")
+        print(f"  Average Simulated Delta:   {mean_delta:.4f}")
+        print(f"  Estimator Variance:        {estimator_variance:.4f}%") 
+        print(f"  Average Relative Error:    {mean_relative_error:.4f}%")
+        print(f"  Average Relative Bias:     {relative_ave_bias:.4f}%")
         print(f"  Computation Time:          {formatted_time}")
 
         if(tech == 1):
@@ -164,22 +170,95 @@ class HestonPlots:
             plt.savefig('./plots_PLS/Delta_Estimates_PLS.png', dpi=150)
             print("Saved Delta Convergence plots for PLS as Delta_Estimates_PLS.png")
 
-    def plot_hedging_trajectory(self, simulator, model: HestonHedging, N_paths, seeds, tech):
+    # def plot_mc_delta_estimates(self, simulator, model, n_sims, n_paths_per_sim, seeds, tech, b=1.0, fd_bump=1e-4, pls_lambda=100.0):
+    #     """
+    #     Plots the initial Delta estimates across different seeds and calculates 
+    #     estimator variance and relative error.
+    #     """
+    #     deltas = []
+    #     start = time.time()
+
+    #     for seed in seeds:
+    #         # Execute the correct technique based on the 'tech' parameter
+    #         if tech == 1:
+    #             _, _, _, d, _, _ = model.delta_vega_hedging(simulator, seed, rehedge_steps=1)
+    #         elif tech == 2:
+    #             _, _, _, d, _, _ = model.CV_delta_vega_hedging(simulator, n_sims, n_paths_per_sim, seed, rehedge_steps=1, b=b, fd_bump=fd_bump)
+    #         else:
+    #             _, _, _, d, _, _ = model.CV_delta_vega_hedging_pls(simulator, n_sims, n_paths_per_sim, seed, rehedge_steps=1, b=b, fd_bump=fd_bump, pls_lambda=pls_lambda)
+            
+    #         # Append the delta estimate at t=N_steps/2 for this specific seed
+    #         ####
+    #         deltas.append(d[-1])
+
+    #     elapsed = time.time() - start
+    #     formatted_time = str(timedelta(seconds=int(elapsed)))
+
+        
+    #     # Convert to numpy array for analytics
+    #     deltas = np.array(deltas)
+    #     last_delta = deltas[-1]
+    #     true_delta = simulator.params.analytical_delta
+
+    #     # --- 1. Plotting ---
+    #     fig, ax = plt.subplots(figsize=(10, 6))
+    #     ax.plot(seeds, deltas, 'bo-', label='Simulated Delta at $t=0$', alpha=0.7)
+    #     ax.axhline(y=true_delta, color='r', linestyle='--', linewidth=2, label=f'Analytical = {true_delta:.6f}')
+        
+    #     ax.set_xlabel('Seed')
+    #     ax.set_ylabel('Delta Estimate $\Delta$')
+    #     technique_name = {1: "Regular MC", 2: "Control Variate", 3: "CV + PLS"}[tech]
+    #     ax.set_title(f'Monte Carlo Delta Estimates Across Independent Seeds\n({technique_name})')
+    #     ax.grid(True, alpha=0.3)
+    #     ax.legend()
+    #     plt.tight_layout()
+
+    #     # --- 2. Analytics ---
+    #     estimator_variance = np.var(deltas, ddof=1)*100
+    #     relative_errors = np.abs((deltas - true_delta) / true_delta)
+        
+    #     mean_relative_error = np.mean(relative_errors) * 100 
+    #     mean_delta = np.mean(deltas)
+
+    #     average_bias = abs(np.mean(deltas) - true_delta)
+    #     relative_ave_bias = (average_bias / true_delta) * 100
+
+    #     tech_name_full = {1: "Regular MC estimate", 2: "Control Variate estimate", 3: "CV and PLS estimate"}[tech]
+
+    #     print(f"\n{tech_name_full}")
+    #     print(f"  Analytical Delta:          {true_delta:.6f}")
+    #     print(f"  Average Simulated Delta:   {mean_delta:.6f}")
+    #     print(f"  Estimator Variance:        {estimator_variance:.6f}%") 
+    #     print(f"  Average Relative Error:    {mean_relative_error:.6f}%")
+    #     print(f"  Average Relative Bias:     {relative_ave_bias:.6f}%")
+    #     print(f"  Computation Time:          {formatted_time}")
+
+    #     if(tech == 1):
+    #         plt.savefig('./plots/Delta_Estimates.png', dpi=150)
+    #         print("Saved Delta Convergence plots for regular MC as Delta_Estimates.png")
+    #     elif(tech == 2): 
+    #         plt.savefig('./plots_CV/Delta_Estimates_CV.png', dpi=150)
+    #         print("Saved Delta Convergence plots for Control Variate as Delta_Estimates_CV.png")
+    #     else: 
+    #         plt.savefig('./plots_PLS/Delta_Estimates_PLS.png', dpi=150)
+    #         print("Saved Delta Convergence plots for PLS as Delta_Estimates_PLS.png")
+
+    def plot_hedging_trajectory(self, simulator, model: HestonHedging, num_paths_per_sim, seeds, tech):
         
         fig, axes = plt.subplots(5, 1, figsize=(12, 18))
         ax2, ax3, ax4, ax5, ax6 = axes
         for seed in seeds:
             if(tech == 1):
                 t, S, v, deltas, phis, port_val = model.delta_vega_hedging(
-                    simulator, seed=seed, rehedge_steps=1
+                    simulator, num_paths_per_sim, seed=seed, rehedge_steps=1
                 )
             elif(tech==2):
                 t, S, v, deltas, phis, port_val = model.CV_delta_vega_hedging(
-                    simulator, N_paths, seed=seed, rehedge_steps=1
+                    simulator, num_paths_per_sim, seed=seed, rehedge_steps=1
                 )
             else:
                 t, S, v, deltas, phis, port_val = model.CV_delta_vega_hedging_pls(
-                    simulator, N_paths, seed=seed, rehedge_steps=1
+                    simulator, num_paths_per_sim, seed=seed, rehedge_steps=1
                 )                
         # Compute portfolio components at each timestep
             V = np.array([

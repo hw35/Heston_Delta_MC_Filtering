@@ -38,6 +38,28 @@ def get_params_user_input():
     # Unpack the dictionary into your class
     return HestonParams(**data, analytical_delta=0.0)
 
+def order_stat_CI(deltas, confidence_level):
+    """
+    Dynamically calculates the Empirical and Median confidence intervals 
+    for an array of simulated Deltas using order statistics.
+    """
+    n = len(deltas)
+    deltas_sorted = np.sort(deltas)
+    
+    # Calculate alpha for the tails
+    alpha = 1.0 - confidence_level
+    
+    # Calculate the exact indices for the bottom and top percentiles
+    lower_emp_idx = int(np.floor(n * (alpha / 2)))
+    upper_emp_idx = int(np.ceil(n * (1 - alpha / 2))) - 1
+    
+    # Use np.clip to prevent out-of-bounds errors if N is extremely small
+    lower_emp_idx = np.clip(lower_emp_idx, 0, n - 1)
+    upper_emp_idx = np.clip(upper_emp_idx, 0, n - 1)
+    
+    emp_ci = (round(deltas_sorted[lower_emp_idx],4), round(deltas_sorted[upper_emp_idx],4))
+    return emp_ci
+
 if __name__ == "__main__":      
     # Set up parameters
     params = HestonParams(
@@ -71,10 +93,9 @@ if __name__ == "__main__":
     print("Monte Carlo Pricing")
     print("-"*80)
     
-    N_paths_MC = 5000
-    num_sims = 10000
-    paths_per_sim = 100
-    paths_to_print = np.logspace(np.log10(100), np.log10(10000), num=6, dtype=int)
+    n_paths_per_sim = 100
+    n_sims = 10
+    paths_to_print = np.logspace(np.log10(10), np.log10(1000), num=6, dtype=int)
     #print(f"\nUsing {N_paths:,} paths...")
     
     # _,call_price, call_std = simulator.price_option(N_paths, 'call', seed=42)
@@ -91,50 +112,64 @@ if __name__ == "__main__":
     # print(f"  S·exp(-q·T) - K·exp(-r·T) = ${pcp_rhs:.4f}")
     # print(f"  Difference: ${abs(pcp_lhs - pcp_rhs):.4f}")
     
-    print(f"\nSummary statistics of generated Heston MC deltas with {num_sims:,} simulations, each with {paths_per_sim} paths...\n")
+    print(f"\nSummary statistics of generated Heston MC deltas with {n_sims:,} simulations, each with {n_paths_per_sim} paths, with 100 time steps per path...\n")
+   
+    ave_deltas_across_sims = []
     start = time.time()
-    delta, delta_stde = simulator.estimate_delta_finite_diff(
-                                M_simulations= num_sims, 
-                                N_paths_per_sim= paths_per_sim, 
+
+    for seed in range(n_sims):
+        delta, delta_stde = simulator.estimate_delta_finite_diff(
+                                N_paths_per_sim= n_paths_per_sim, 
                                 tau_i=simulator.params.tau, 
                                 v_i=simulator.params.v0, 
                                 option_type='call', 
-                                dS=0.01
-    )
+                                dS=0.01, 
+                                seed = seed
+        )
+        ave_deltas_across_sims.append(delta)    
 
     elapsed = time.time() - start
     formatted_time = str(timedelta(seconds=int(elapsed)))
     
-    print(f"  Analytical Delta:    {simulator.params.analytical_delta:.6f}")
-    print(f"  Monte Carlo Delta:   {delta:.6f} ± {1.96*delta_stde:.2e}")
-    print(f"  Absolute Error:      {abs(delta - simulator.params.analytical_delta)*100:.2f}%")
-    print(f"  Relative Error:      {abs(delta - simulator.params.analytical_delta)/simulator.params.analytical_delta*100:.2f}%")
-    print(f"  Computation Time:    {formatted_time}")
+    # Calculate CI with order statistics to avoid assuming normality of distribution across simulations
+    conf_level = 0.95
+    conf_interval = order_stat_CI(ave_deltas_across_sims,conf_level)
+    mean_delta = np.mean(ave_deltas_across_sims)
+
+    print(f"  Analytical Delta:     {simulator.params.analytical_delta:.6f}")
+    print(f"  Monte Carlo Delta:    {mean_delta:.6f}")
+    print(f"  {int(conf_level*100)}% Conf Interval:    {conf_interval}")
+    print(f"  Absolute Error:       {abs(mean_delta - simulator.params.analytical_delta)*100:.2f}%")
+    print(f"  Relative Error:       {abs(mean_delta - simulator.params.analytical_delta)/simulator.params.analytical_delta*100:.2f}%")
+    print(f"  Computation Time:     {formatted_time}")
     
     # Convergence study
     print("\n" + "-"*80)
-    print(f"Monte Carlo Estimation of delta with {N_paths_MC:,} simulations..., each with {paths_per_sim} paths...")
+    num_sims = 1000
+    print(f"One simulation of Monte Carlo Estimation of delta, each with {n_paths_per_sim} paths...")
     print("-"*80)
 
-    regular_mc = 1
-    control_variate = 2
-    penalized_least_squares = 3
-    seeds = [x for x in range(1, 21)]
+    #regular_mc = 1
+    #control_variate = 2
+    #penalized_least_squares = 3
+    seeds_visual = [x for x in range(1, 21)]
 
-    #plotter.convergence_study(simulator,paths_to_print, paths_per_sim, simulator.params.analytical_delta, seed=42)
+    # confirming convergence of Delta for one simulation
+    #plotter.convergence_study(simulator, n_paths_per_sim, paths_to_print, simulator.params.analytical_delta)
 
-    # print("\n" + "-"*80)
-    # print(f"Summary statistics on {len(seeds)} number of simulations of {N_paths_MC} paths each with techniques:")
-    # print("-"*80)
+    print("\n" + "-"*80)
+    print(f"Summary statistics on {n_sims} number of simulations of {n_paths_per_sim} paths each with techniques:")
+    print("-"*80)
     
-    # for i in range(3):
-    #     plotter.plot_mc_delta_estimates(simulator, model, N_paths=N_paths_MC, seeds=seeds, tech=i+1)
+    for i in range(3):
+        plotter.plot_mc_delta_estimates(simulator, model, n_sims, n_paths_per_sim, seed=42, tech=i+1)
 
-    # print("\n" + "-"*80)
-    # print(f"Plotting trajectory of portfolio with {len(seeds)} number of simulations of {20} paths each with techniques:")
-    # print("-"*80)    
+    print("\n" + "-"*80)
+    print(f"Plotting trajectory of portfolio with {len(seeds_visual)} number of simulations of {n_paths_per_sim} paths each with techniques:")
+    print("-"*80)    
     # for i in range(3):
-    #     plotter.plot_hedging_trajectory(simulator,model,N_paths=20,seeds = seeds,tech=i+1)
+    #     plotter.plot_hedging_trajectory(simulator,model,n_paths_per_sim,seeds = seeds,tech=i+1)
+    plotter.plot_hedging_trajectory(simulator,model,n_paths_per_sim,seeds = seeds_visual,tech=3)
 
 
 
